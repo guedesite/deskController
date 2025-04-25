@@ -1,0 +1,25 @@
+﻿  screen_capture.cpp
+C:\Users\guedesite\Desktop\git\deskController\cpp\screen_capture.cpp(209,79): warning C4244: '=' : conversion de '__int64' en '_Ty', perte possible de données
+C:\Users\guedesite\Desktop\git\deskController\cpp\screen_capture.cpp(209,79): warning C4244:         with
+C:\Users\guedesite\Desktop\git\deskController\cpp\screen_capture.cpp(209,79): warning C4244:         [
+C:\Users\guedesite\Desktop\git\deskController\cpp\screen_capture.cpp(209,79): warning C4244:             _Ty=int
+C:\Users\guedesite\Desktop\git\deskController\cpp\screen_capture.cpp(209,79): warning C4244:         ]
+C:\Users\guedesite\Desktop\git\deskController\cpp\screen_capture.cpp(231,86): warning C4244: '=' : conversion de '__int64' en '_Ty', perte possible de données
+C:\Users\guedesite\Desktop\git\deskController\cpp\screen_capture.cpp(231,86): warning C4244:         with
+C:\Users\guedesite\Desktop\git\deskController\cpp\screen_capture.cpp(231,86): warning C4244:         [
+C:\Users\guedesite\Desktop\git\deskController\cpp\screen_capture.cpp(231,86): warning C4244:             _Ty=int
+C:\Users\guedesite\Desktop\git\deskController\cpp\screen_capture.cpp(231,86): warning C4244:         ]
+C:\Users\guedesite\Desktop\git\deskController\cpp\screen_capture.cpp(253,93): warning C4244: '=' : conversion de '__int64' en '_Ty', perte possible de données
+C:\Users\guedesite\Desktop\git\deskController\cpp\screen_capture.cpp(253,93): warning C4244:         with
+C:\Users\guedesite\Desktop\git\deskController\cpp\screen_capture.cpp(253,93): warning C4244:         [
+C:\Users\guedesite\Desktop\git\deskController\cpp\screen_capture.cpp(253,93): warning C4244:             _Ty=int
+C:\Users\guedesite\Desktop\git\deskController\cpp\screen_capture.cpp(253,93): warning C4244:         ]
+C:\Users\guedesite\Desktop\git\deskController\cpp\screen_capture.cpp(275,97): warning C4244: '=' : conversion de '__int64' en '_Ty', perte possible de données
+C:\Users\guedesite\Desktop\git\deskController\cpp\screen_capture.cpp(275,97): warning C4244:         with
+C:\Users\guedesite\Desktop\git\deskController\cpp\screen_capture.cpp(275,97): warning C4244:         [
+C:\Users\guedesite\Desktop\git\deskController\cpp\screen_capture.cpp(275,97): warning C4244:             _Ty=int
+C:\Users\guedesite\Desktop\git\deskController\cpp\screen_capture.cpp(275,97): warning C4244:         ]
+C:\Users\guedesite\Desktop\git\deskController\cpp\screen_capture.cpp(292,37): warning C4267: '=' : conversion de 'size_t' en 'int', perte possible de données
+C:\Users\guedesite\Desktop\git\deskController\cpp\screen_capture.cpp(345,19): warning C4018: '<' : incompatibilité signed/unsigned
+C:\Users\guedesite\Desktop\git\deskController\cpp\screen_capture.cpp(351,26): warning C4018: '>=' : incompatibilité signed/unsigned
+  screen_capture.vcxproj -> C:\Users\guedesite\Desktop\git\deskController\cpp\x64\Debug\screen_capture.exe
