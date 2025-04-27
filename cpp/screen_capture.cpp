@@ -135,7 +135,7 @@ extern "C" {
 
         DXGI_OUTDUPL_FRAME_INFO frameInfo;
         ComPtr<IDXGIResource> desktopResource;
-        HRESULT hr = screen.duplication->AcquireNextFrame(100, &frameInfo, &desktopResource);
+        HRESULT hr = screen.duplication->AcquireNextFrame(10, &frameInfo, &desktopResource);
         if (FAILED(hr)) {
             screen.duplication->ReleaseFrame();
             return result;
@@ -165,7 +165,7 @@ extern "C" {
         UINT rightBound = screen.reducedWidth - keepWidth;
         UINT topBound = keepHeight;
         UINT bottomBound = screen.reducedHeight - keepHeight;
-
+        //std::cout << screen.width << screen.height << std::endl;
         // Fill pixel buffer
         for (UINT y = 0; y < screen.reducedHeight; ++y) {
             for (UINT x = 0; x < screen.reducedWidth; ++x) {
@@ -236,8 +236,11 @@ extern "C" {
 
         // Bottom edge (right to left)
         for (int i = 0; i < ledX; ++i) {
-            UINT startX = static_cast<UINT>(i * topBottomZoneWidth);
-            UINT endX = static_cast<UINT>((i + 1) * topBottomZoneWidth);
+            // on part de la droite vers la gauche
+            UINT startX = screen.reducedWidth
+                - static_cast<UINT>((i + 1) * topBottomZoneWidth);
+            UINT endX = screen.reducedWidth
+                - static_cast<UINT>(i * topBottomZoneWidth);
             long long rSum = 0, gSum = 0, bSum = 0;
             int count = 0;
             for (UINT x = startX; x < endX && x < screen.reducedWidth; ++x) {
@@ -246,20 +249,27 @@ extern "C" {
                     rSum += (pixel >> 16) & 0xFF;
                     gSum += (pixel >> 8) & 0xFF;
                     bSum += pixel & 0xFF;
-                    count++;
+                    ++count;
                 }
             }
             if (count > 0) {
-                ledColors[ledX + ledY + i] = ((rSum / count) << 16) | ((gSum / count) << 8) | (bSum / count);
-            } else {
+                ledColors[ledX + ledY + i]
+                    = ((rSum / count) << 16)
+                    | ((gSum / count) << 8)
+                    | (bSum / count);
+            }
+            else {
                 ledColors[ledX + ledY + i] = 0;
             }
         }
 
         // Left edge (bottom to top)
         for (int i = 0; i < ledY; ++i) {
-            UINT startY = static_cast<UINT>(i * leftRightZoneHeight);
-            UINT endY = static_cast<UINT>((i + 1) * leftRightZoneHeight);
+            // on part du bas vers le haut
+            UINT startY = screen.reducedHeight
+                - static_cast<UINT>((i + 1) * leftRightZoneHeight);
+            UINT endY = screen.reducedHeight
+                - static_cast<UINT>(i * leftRightZoneHeight);
             long long rSum = 0, gSum = 0, bSum = 0;
             int count = 0;
             for (UINT y = startY; y < endY && y < screen.reducedHeight; ++y) {
@@ -268,12 +278,16 @@ extern "C" {
                     rSum += (pixel >> 16) & 0xFF;
                     gSum += (pixel >> 8) & 0xFF;
                     bSum += pixel & 0xFF;
-                    count++;
+                    ++count;
                 }
             }
             if (count > 0) {
-                ledColors[ledX * 2 + ledY + i] = ((rSum / count) << 16) | ((gSum / count) << 8) | (bSum / count);
-            } else {
+                ledColors[ledX * 2 + ledY + i]
+                    = ((rSum / count) << 16)
+                    | ((gSum / count) << 8)
+                    | (bSum / count);
+            }
+            else {
                 ledColors[ledX * 2 + ledY + i] = 0;
             }
         }
@@ -372,216 +386,286 @@ void saveToBMP(const int* ledColors, int ledX, int ledY, UINT width, UINT height
 }
 
 int main() {
+        ScreenController controller;
+        char* screenId = nullptr;
+        HANDLE serialPort = INVALID_HANDLE_VALUE;
 
-    ScreenController controller;
-    char* screenId = nullptr;
-    HANDLE serialPort = INVALID_HANDLE_VALUE;
+        // FPS limiter configuration
+        const int TARGET_FPS = 60; //10;
+        const std::chrono::microseconds FRAME_DURATION(1000000 / TARGET_FPS); // microseconds per frame
 
-    // FPS limiter configuration
-    const int TARGET_FPS = 60; //10;
-    const std::chrono::microseconds FRAME_DURATION(1000000 / TARGET_FPS); // microseconds per frame
+        // FPS and error tracking
+        int frameCount = 0;
+        int errorCount = 0;
+        auto lastReportTime = std::chrono::steady_clock::now();
 
-    // FPS and error tracking
-    int frameCount = 0;
-    int errorCount = 0;
-    auto lastReportTime = std::chrono::steady_clock::now();
+        int ledX = 169;//161;
+        int ledY = 90;//93;
 
-    while (true) {
-        auto frameStart = std::chrono::steady_clock::now();
+        while (true) {
+            auto frameStart = std::chrono::steady_clock::now();
 
-        if (screenId == nullptr) {
-            auto it = controller.monitorsId.find("HKM3750");//GSM82C5
-            if (it != controller.monitorsId.end()) {
-                std::string str = std::to_string(it->second);
-                screenId = new char[str.size() + 1];
-                std::copy(str.begin(), str.end(), screenId);
-                screenId[str.size()] = '\0';
-                std::cout << "screenId set to: " << screenId << std::endl;
-            }
-            else {
-                Sleep(200);
-                continue;
-            }
-        }
-
-        if (serialPort == INVALID_HANDLE_VALUE) {
-            if (controller.serialPortNumber == 0) {
-                Sleep(200);
-                continue;
-            }
-            for (int i = 1; i <= 10; ++i) {
-                if (i == controller.serialPortNumber) {
-                    continue;
-                }
-                std::string portName = "\\\\.\\COM" + std::to_string(i);
-                std::cout << "[screen_capture] Tentative de connexion au port série " << portName << std::endl;
-
-                HANDLE tempPort = CreateFileA(portName.c_str(), GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
-                if (tempPort == INVALID_HANDLE_VALUE) {
-                    continue;
-                }
-
-                DCB dcbSerialParams = { 0 };
-                dcbSerialParams.DCBlength = sizeof(dcbSerialParams);
-                if (!GetCommState(tempPort, &dcbSerialParams)) {
-                    CloseHandle(tempPort);
-                    continue;
-                }
-                dcbSerialParams.BaudRate = 4000000;//4000000;
-                dcbSerialParams.ByteSize = 8;
-                dcbSerialParams.StopBits = ONESTOPBIT;
-                dcbSerialParams.Parity = NOPARITY;
-                if (!SetCommState(tempPort, &dcbSerialParams)) {
-                    CloseHandle(tempPort);
-                    continue;
-                }
-
-                COMMTIMEOUTS timeouts = { 0 };
-                timeouts.ReadIntervalTimeout = 50;
-                timeouts.ReadTotalTimeoutConstant = 1000;
-                timeouts.ReadTotalTimeoutMultiplier = 10;
-                if (!SetCommTimeouts(tempPort, &timeouts)) {
-                    CloseHandle(tempPort);
-                    continue;
-                }
-
-                std::cout << "[screen_capture] Connecté au port série: " << portName << std::endl;
-
-                uint8_t data[2] = { 0xFF, 0xFF };
-                DWORD bytesWritten;
-
-                // Fixed: Changed 'y' to 'tempPort'
-                if (WriteFile(tempPort, data, 2, &bytesWritten, NULL)) {
-                    std::cout << "[screen_capture] Successfully sent FF FF" << std::endl;
+            if (screenId == nullptr) {
+                auto it = controller.monitorsId.find("GSM82C5");//GSM82C5
+                if (it != controller.monitorsId.end()) {
+                    std::string str = std::to_string(it->second);
+                    screenId = new char[str.size() + 1];
+                    std::copy(str.begin(), str.end(), screenId);
+                    screenId[str.size()] = '\0';
+                    std::cout << "screenId set to: " << screenId << std::endl;
                 }
                 else {
-                    CloseHandle(tempPort);
+                    Sleep(200);
+                    continue;
+                }
+            }
+
+            if (serialPort == INVALID_HANDLE_VALUE) {
+
+                if (controller.serialPortNumber == 0) {
+
+                    Sleep(200);
+                    continue;
+                }
+                for (int i = 1; i <= 10; ++i) {
+                    if (i == controller.serialPortNumber) {
+                        continue;
+                    }
+                    std::string portName = "\\\\.\\COM" + std::to_string(i);
+                    std::cout << "[screen_capture] Tentative de connexion au port série " << portName << std::endl;
+
+                    HANDLE tempPort = CreateFileA(portName.c_str(), GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
+                    if (tempPort == INVALID_HANDLE_VALUE) {
+                        continue;
+                    }
+
+                    DCB dcbSerialParams = { 0 };
+                    dcbSerialParams.DCBlength = sizeof(dcbSerialParams);
+                    if (!GetCommState(tempPort, &dcbSerialParams)) {
+                        CloseHandle(tempPort);
+                        continue;
+                    }
+                    dcbSerialParams.BaudRate = 4000000;//4000000;
+                    dcbSerialParams.ByteSize = 8;
+                    dcbSerialParams.StopBits = ONESTOPBIT;
+                    dcbSerialParams.Parity = NOPARITY;
+                    if (!SetCommState(tempPort, &dcbSerialParams)) {
+                        CloseHandle(tempPort);
+                        continue;
+                    }
+
+                    COMMTIMEOUTS timeouts = { 0 };
+                    timeouts.ReadIntervalTimeout = 50;
+                    timeouts.ReadTotalTimeoutConstant = 1000;
+                    timeouts.ReadTotalTimeoutMultiplier = 10;
+                    if (!SetCommTimeouts(tempPort, &timeouts)) {
+                        CloseHandle(tempPort);
+                        continue;
+                    }
+
+                    std::cout << "[screen_capture] Connecté au port série: " << portName << std::endl;
+
+                    uint8_t data[2] = { 0xFF, 0xFF };
+                    DWORD bytesWritten;
+
+                    // Fixed: Changed 'y' to 'tempPort'
+                    if (WriteFile(tempPort, data, 2, &bytesWritten, NULL)) {
+                        std::cout << "[screen_capture] Successfully sent FF FF" << std::endl;
+                    }
+                    else {
+                        CloseHandle(tempPort);
+                        continue;
+                    }
+
+                    auto start = std::chrono::system_clock::now();
+                    int tryingTime = 5000;
+
+                    while (std::chrono::duration_cast<std::chrono::milliseconds>(
+                        std::chrono::system_clock::now() - start).count() < tryingTime) {
+                        DWORD bytesRead;
+                        uint8_t received;
+                        if (ReadFile(tempPort, &received, 1, &bytesRead, NULL) && bytesRead > 0) {
+                            if (received == 0) {
+                                std::cout << "trouvé" << std::endl;
+                                serialPort = tempPort;
+                                break;
+                            }
+                            else {
+                                std::cout << "nany ?" << std::endl;
+                            }
+                        }
+                        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                    }
+                    if (serialPort == INVALID_HANDLE_VALUE) {
+                        std::cout << "[screen_capture] erggggg, pas le bon ...." << std::endl;
+                        CloseHandle(tempPort);
+                    }
+                }
+            }
+            else {
+
+                int keepPixels = 140;
+                float reduction = 1.0f;
+                PixelResult result = getScreenPixels(screenId, ledX, ledY, keepPixels, reduction);
+                int offset = 460;                // décalage voulu
+                int total = result.size;        // nombre total de pixels
+                
+                if (total == -1) {
                     continue;
                 }
 
-                auto start = std::chrono::system_clock::now();
-                int tryingTime = 5000;
+                /*std::vector<int> correctedColors(total);
+                constexpr float gamma = 1.0f;             // plus gamma est grand, plus c'est sombre
+                constexpr float inv_gamma = 1.0f / gamma;
+                for (int i = 0; i < total; ++i) {
+                    int raw = result.pixels[i];
+                    float r = ((raw >> 16) & 0xFF) / 255.0f;
+                    float g = ((raw >> 8) & 0xFF) / 255.0f;
+                    float b = ((raw) & 0xFF) / 255.0f;
+                    // correction gamma
+                    uint8_t rc = uint8_t(std::pow(r, inv_gamma) * 255.0f + 0.5f);
+                    uint8_t gc = uint8_t(std::pow(g, inv_gamma) * 255.0f + 0.5f);
+                    uint8_t bc = uint8_t(std::pow(b, inv_gamma) * 255.0f + 0.5f);
+                    correctedColors[i] = (rc << 16) | (gc << 8) | bc;
+                }*/
 
-                while (std::chrono::duration_cast<std::chrono::milliseconds>(
-                    std::chrono::system_clock::now() - start).count() < tryingTime) {
-                    DWORD bytesRead;
-                    uint8_t received;
-                    if (ReadFile(tempPort, &received, 1, &bytesRead, NULL) && bytesRead > 0) {
-                        if (received == 0) {
-                            std::cout << "trouvé" << std::endl;
-                            serialPort = tempPort;
-                            break;
-                        }
-                        else {
-                            std::cout << "nany ?" << std::endl;
+                std::vector<int> correctedColors(total);
+                constexpr float gamma = 0.3f;             // plus gamma est grand, plus c'est sombre
+                constexpr float inv_gamma = 1.0f / gamma;
+                for (int i = 0; i < total; ++i) {
+                    int raw = result.pixels[i];
+                    float r = ((raw >> 16) & 0xFF) / 255.0f;
+                    float g = ((raw >> 8) & 0xFF) / 255.0f;
+                    float b = ((raw) & 0xFF) / 255.0f;
+                    // correction gamma
+                    uint8_t rc = uint8_t(std::pow(r, inv_gamma) * 255.0f + 0.5f);
+                    uint8_t gc = uint8_t(std::pow(g, inv_gamma) * 255.0f + 0.5f);
+                    uint8_t bc = uint8_t(std::pow(b, inv_gamma) * 255.0f + 0.5f);
+                    correctedColors[i] = (rc << 16) | (gc << 8) | bc;
+                }
+
+                //std::vector<uint8_t> txbuf;
+                //txbuf.reserve(6 * total + 2);
+                for (int j = 0; j < total; j++) {
+                    int i = (offset + j) % total;
+                   /* uint16_t idx = static_cast<uint16_t>(i);
+                    int color = result.pixels[j];  // couleur (après éventuelle correction gamma)
+
+                    // Prépare les 6 octets à envoyer
+                    uint8_t bytes[6];
+                    bytes[0] = 0xFF;                     // toujours 0xFF pour le header
+                    bytes[1] = idx & 0xFF;
+                    bytes[2] = (idx >> 8) & 0xFF;
+                    bytes[3] = (color >> 16) & 0xFF;
+                    bytes[4] = (color >> 8) & 0xFF;
+                    bytes[5] = (color) & 0xFF;
+
+                    // Clamping : aucun octet ne doit rester à 0xFF (sauf bytes[0])
+                    for (int k = 1; k < 6; ++k) {
+                        if (bytes[k] == 0xFF) {
+                            bytes[k] = 0xFE;
                         }
                     }
-                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                }
-                if (serialPort == INVALID_HANDLE_VALUE) {
-                    std::cout << "[screen_capture] erggggg, pas le bon ...." << std::endl;
-                    CloseHandle(tempPort);
-                }
-            }
-        }
-        else {
-            int ledX = 161;//161;
-            int ledY = 10;//93;
-            int keepPixels = 40;
-            float reduction = 1.0f;
-            PixelResult result = getScreenPixels(screenId, ledX, ledY, keepPixels, reduction);
 
-            for (int i = 0; i < result.size; i++) {
-                DWORD bytesWritten;
-                uint8_t buffer[6];
-                buffer[0] = (uint8_t)0xFF;
-                buffer[1] = (uint8_t)(i & 0xFF);
-                buffer[2] = (uint8_t)((i >> 8) & 0xFF);
-                int color = result.pixels[i];
-                buffer[3] = (uint8_t)((color >> 16) & 0xFF);
-                buffer[4] = (uint8_t)((color >> 8) & 0xFF);
-                buffer[5] = (uint8_t)(color & 0xFF);
+                    // Ajoute les octets corrigés dans le buffer d'envoi
+                    for (int k = 0; k < 6; ++k) {
+                        txbuf.push_back(bytes[k]);
+                    }*/
+                    DWORD bytesWritten;
+                    uint8_t buffer[6];
+                    buffer[0] = (uint8_t)0xFF;
+                    buffer[1] = (uint8_t)(i & 0xFF);
+                    buffer[2] = (uint8_t)((i >> 8) & 0xFF);
+                    int color = correctedColors[j];
+                    buffer[3] = (uint8_t)((color >> 16) & 0xFF);
+                    buffer[4] = (uint8_t)((color >> 8) & 0xFF);
+                    buffer[5] = (uint8_t)(color & 0xFF);
 
-            
-                if (buffer[1] == 0xFF) {
-                    buffer[1] = 0xFE;
-                }
-                if (buffer[2] == 0xFF) {
-                    buffer[2] = 0xFE;
-                }
-                if (buffer[3] == 0xFF) {
-                    buffer[3] = 0xFE;
-                }
-                if (buffer[4] == 0xFF) {
-                    buffer[4] = 0xFE;
-                }
-                if (buffer[5] == 0xFF) {
-                    buffer[5] = 0xFE;
-                }
 
-                if (!WriteFile(serialPort, buffer, 6, &bytesWritten, NULL)) {
+                    if (buffer[1] == 0xFF) {
+                        buffer[1] = 0xFE;
+                    }
+                    if (buffer[2] == 0xFF) {
+                        buffer[2] = 0xFE;
+                    }
+                    if (buffer[3] == 0xFF) {
+                        buffer[3] = 0xFE;
+                    }
+                    if (buffer[4] == 0xFF) {
+                        buffer[4] = 0xFE;
+                    }
+                    if (buffer[5] == 0xFF) {
+                        buffer[5] = 0xFE;
+                    }
+                    if (!WriteFile(serialPort, buffer, 6, &bytesWritten, NULL)) {
+                        errorCount++;
+                        std::cerr << "[screen_capture] Failed to send pixel " << j << std::endl;
+                        CloseHandle(serialPort);
+                        serialPort = INVALID_HANDLE_VALUE;
+                        break;
+                    }
+                    else if (bytesWritten != 6) {
+                        errorCount++;
+                        std::cerr << "[screen_capture] Partial send for pixel " << j
+                            << ", sent " << bytesWritten << " bytes" << std::endl;
+                    }
+                }
+                //txbuf.push_back(0xFF);
+                //txbuf.push_back(0xFF);
+
+               DWORD bytesWritten2;
+                uint8_t data[5] = { 0xFF, 0xFF};
+                if (!WriteFile(serialPort, data, 2, &bytesWritten2, NULL)) {
                     errorCount++;
-                    std::cerr << "[screen_capture] Failed to send pixel " << i << std::endl;
+                    std::cerr << "[screen_capture] Failed to sync pixel " << std::endl;
                     CloseHandle(serialPort);
                     serialPort = INVALID_HANDLE_VALUE;
                     break;
                 }
-                else if (bytesWritten != 6) {
-                    errorCount++;
-                    std::cerr << "[screen_capture] Partial send for pixel " << i
-                        << ", sent " << bytesWritten << " bytes" << std::endl;
+                /*DWORD written;
+                if (!WriteFile(serialPort, txbuf.data(), txbuf.size(), &written, NULL) || written != txbuf.size()) {
+                    std::cerr << "[screen_capture] Serial bulk send failed\n";
+                }*/
+                if (!FlushFileBuffers(serialPort)) {
+                    std::cerr << "[screen_capture] Warning: FlushFileBuffers failed (err="
+                        << GetLastError() << ")" << std::endl;
+                }
+                //saveToBMP(result.pixels, ledX, ledY, 600, 600, "test.bmp");
+
+                // Clean up PixelResult
+                if (result.pixels) {
+                    delete[] result.pixels;
                 }
             }
 
-            DWORD bytesWritten2;
-            uint8_t data[5] = { 0xFF, 0xFF};
-            if (!WriteFile(serialPort, data, 2, &bytesWritten2, NULL)) {
-                errorCount++;
-                std::cerr << "[screen_capture] Failed to sync pixel " << std::endl;
-                CloseHandle(serialPort);
-                serialPort = INVALID_HANDLE_VALUE;
-                break;
+            // FPS limiting
+            frameCount++;
+            auto frameEnd = std::chrono::steady_clock::now();
+            auto frameTime = frameEnd - frameStart;
+            if (frameTime < FRAME_DURATION) {
+                std::this_thread::sleep_for(FRAME_DURATION - frameTime);
             }
-            if (!FlushFileBuffers(serialPort)) {
-                std::cerr << "[screen_capture] Warning: FlushFileBuffers failed (err="
-                    << GetLastError() << ")" << std::endl;
-            }
-            saveToBMP(result.pixels, ledX, ledY, 600, 600, "test.bmp");
 
-            // Clean up PixelResult
-            if (result.pixels) {
-                delete[] result.pixels;
+            // FPS and error reporting
+            auto currentTime = std::chrono::steady_clock::now();
+            auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(currentTime - lastReportTime);
+
+            if (elapsed.count() >= 1) {
+                std::cout << "[screen_capture] FPS: " << frameCount
+                    << " | Serial Errors: " << errorCount << std::endl;
+                frameCount = 0;
+                errorCount = 0;
+                lastReportTime = currentTime;
             }
         }
 
-        // FPS limiting
-        frameCount++;
-        auto frameEnd = std::chrono::steady_clock::now();
-        auto frameTime = frameEnd - frameStart;
-        if (frameTime < FRAME_DURATION) {
-            std::this_thread::sleep_for(FRAME_DURATION - frameTime);
+        // Cleanup
+        if (screenId) {
+            delete[] screenId;
         }
-
-        // FPS and error reporting
-        auto currentTime = std::chrono::steady_clock::now();
-        auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(currentTime - lastReportTime);
-
-        if (elapsed.count() >= 1) {
-            std::cout << "[screen_capture] FPS: " << frameCount
-                << " | Serial Errors: " << errorCount << std::endl;
-            frameCount = 0;
-            errorCount = 0;
-            lastReportTime = currentTime;
+        if (serialPort != INVALID_HANDLE_VALUE) {
+            CloseHandle(serialPort);
         }
-    }
-
-    // Cleanup
-    if (screenId) {
-        delete[] screenId;
-    }
-    if (serialPort != INVALID_HANDLE_VALUE) {
-        CloseHandle(serialPort);
-    }
     return 0;
 }
 

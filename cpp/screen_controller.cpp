@@ -183,11 +183,11 @@ private:
         std::string currentMonitorName;
         bool isActive = false;
         int index = 0;
-
+        std::cout << "read lines..." << std::endl;
         while (std::getline(iss, line)) {
             // Nettoyer les espaces blancs au début
             line.erase(0, line.find_first_not_of(" \t\r\n"));
-            std::cout << line << std::endl;
+            //std::cout << line << std::endl;
             if (line.find("Active            :") == 0) {
                 std::string activeStatus = line.substr(line.find(":") + 1);
                 activeStatus.erase(0, activeStatus.find_first_not_of(" \t"));
@@ -204,8 +204,8 @@ private:
                     std::string cmd = MULTIMONITOR_TOOL_PATH + " /enable " + currentMonitorName;
                     system(cmd.c_str());
                 }
-                monitorsId[currentMonitorId] = index++;
-                //std::cout << "found '" << currentMonitorId << "'" << std::endl;
+                //monitorsId[currentMonitorId] = std::stoi(currentMonitorName.substr(11))-1;
+                monitorsId[currentMonitorId] = 1;
             }
 
             else if (line.find("Name              : ") == 0) {
